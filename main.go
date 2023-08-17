@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/gen2brain/beeep"
 	"github.com/rivo/tview"
 )
@@ -20,6 +21,7 @@ var (
 	lunchEndTime    = 20 * time.Second
 	pomodoroCount   = 0
 	isBreak         = false
+	isEndPhase      = false
 )
 
 func timeString() string {
@@ -28,14 +30,23 @@ func timeString() string {
 
 func statusString() string {
 	if isPause {
-    return "PAUSE"
+		return "PAUSE"
 	} else if isBreak && pomodoroCount == 3 {
 		return "LUNCH"
 	} else if isBreak && pomodoroCount != 4 {
-    return fmt.Sprintf("BREAK:%d", pomodoroCount+1)
+		return fmt.Sprintf("BREAK:%d", pomodoroCount+1)
 	} else {
-    return fmt.Sprintf("FOCUS:%d", pomodoroCount+1)
+		return fmt.Sprintf("FOCUS:%d", pomodoroCount+1)
 	}
+}
+
+func endString() string {
+  if isEndPhase {
+    return "ENDED!"
+  } else {
+    return ""
+  }
+  
 }
 
 func tick() {
@@ -57,15 +68,21 @@ func updateTime(ticker time.Ticker, stopTimer chan int) {
 			tick()
 			if !isBreak && timer.Sub(time.Time{}) == pomodoroEndTime {
 				beep("Focus")
+        view.SetTextColor(tcell.ColorRed)
+        isEndPhase = true
 			}
-      if isBreak && pomodoroCount != 4 && timer.Sub(time.Time{}) == breakEndTime {
-        beep("Break")
-      }
-      if isBreak && pomodoroCount == 4 && timer.Sub(time.Time{}) == lunchEndTime {
-        beep("Lunch")
-      }
+			if isBreak && pomodoroCount != 4 && timer.Sub(time.Time{}) == breakEndTime {
+				beep("Break")
+        view.SetTextColor(tcell.ColorRed)
+        isEndPhase = true
+			}
+			if isBreak && pomodoroCount == 4 && timer.Sub(time.Time{}) == lunchEndTime {
+				beep("Lunch")
+        view.SetTextColor(tcell.ColorRed)
+        isEndPhase = true
+			}
 			app.QueueUpdateDraw(func() {
-				view.SetText(fmt.Sprintf("%s: %s", statusString(), timeString()))
+				view.SetText(fmt.Sprintf("%s: %s\n%s", statusString(), timeString(), endString()))
 			})
 		case <-stopTimer:
 			fmt.Println("stopped!")
@@ -82,7 +99,7 @@ func main() {
 	app = tview.NewApplication()
 	view = tview.
 		NewModal().
-		SetText(fmt.Sprintf("%s: %s", statusString(), timeString())).
+		SetText(fmt.Sprintf("%s: %s\n%s", statusString(), timeString(), endString())).
 		AddButtons([]string{"Next", "Pause", "Reset"}).
 		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 			if buttonLabel == "Pause" && !isPause {
@@ -98,17 +115,19 @@ func main() {
 			} else if buttonLabel == "Reset" {
 				timer = time.Time{}
 			} else if buttonLabel == "Next" {
-        timer = time.Time{}
-        if !isBreak {
-          isBreak = true
-        } else {
-          isBreak = false
-          pomodoroCount++
-          if pomodoroCount == 4 {
-            pomodoroCount = 0
-          }
-        }
-      }
+        isEndPhase = false
+        view.SetTextColor(tcell.ColorWhite)
+				timer = time.Time{}
+				if !isBreak {
+					isBreak = true
+				} else {
+					isBreak = false
+					pomodoroCount++
+					if pomodoroCount == 4 {
+						pomodoroCount = 0
+					}
+				}
+			}
 		})
 
 	if err := app.SetRoot(view, false).Run(); err != nil {
